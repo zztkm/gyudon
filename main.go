@@ -24,7 +24,7 @@ type Command struct {
 	name        string
 	short       string
 	long        string
-	Args        struct{}
+	specs       []*spec
 	commands    []*Command
 	args        []string
 	helpCommand *Command
@@ -37,7 +37,8 @@ func (c *Command) addHelpCmd() {
 		return
 	}
 	help := &Command{
-		name: "help",
+		name:   "help",
+		parent: c,
 	}
 	c.addCommand(help)
 }
@@ -53,19 +54,26 @@ func NewRoot(c Commander) *Command {
 }
 
 // FindCommand do not use
-func (c *Command) FindCommand(args []string) *Command {
-	if len(c.commands) == 0 {
-		return nil
-	}
-	if len(args) == 0 {
-		return nil
-	}
-	for _, cmd := range c.commands {
-		if cmd.name == args[0] {
-			return cmd
+func (c *Command) FindCommand(args []string) (*Command, []string) {
+	var innerfind func(*Command, []string) (*Command, []string)
+
+	innerfind = func(c *Command, innerArgs []string) (*Command, []string) {
+		if len(innerArgs) == 0 {
+			return c, innerArgs
 		}
+		if len(c.commands) == 0 {
+			return c, innerArgs
+		}
+		for i := 0; i < len(c.commands); i++ {
+			if innerArgs[0] == c.commands[i].name {
+				return innerfind(c.commands[i], innerArgs[1:])
+			}
+		}
+		return c, innerArgs
 	}
-	return nil
+
+	cmdFound, a := innerfind(c, args)
+	return cmdFound, a
 }
 
 func (c *Command) HasParent() bool {
@@ -100,6 +108,7 @@ func (c *Command) AddCommand(cmder Commander) *Command {
 	cmd := &Command{
 		name:      name,
 		commander: cmder,
+		parent:    c,
 	}
 	c.addCommand(cmd)
 	return cmd
@@ -116,11 +125,12 @@ func (c *Command) Execute(args []string) error {
 	}
 	args = args[1:]
 
-	cmd := c.FindCommand(args)
-	if cmd == nil {
-		return c.execute(args)
+	var flags []string
+	cmd, flags := c.FindCommand(args)
+	err := cmd.execute(flags)
+	if err != nil {
+		return err
 	}
-	cmd.execute(args)
 	return nil
 }
 
@@ -146,13 +156,25 @@ func (c Hello) Run() error {
 	return nil
 }
 
+// Hoge print Fuga
+type Hoge struct {
+	Fuga string `default:"fuga"`
+}
+
+func (c Hoge) Run() error {
+	fmt.Println("hoge", c.Fuga)
+	return nil
+}
+
 func main() {
 	tkm := &Tkm{}
 	root := NewRoot(tkm)
 
-	hello := Hello{}
+	hello := &Hello{}
+	hoge := &Hoge{}
 
-	root.AddCommand(hello)
+	helloCmd := root.AddCommand(hello)
+	helloCmd.AddCommand(hoge)
 
 	err := root.Execute(os.Args)
 	if err != nil {
