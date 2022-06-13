@@ -1,23 +1,20 @@
-package main
+package gyudon
 
 import (
+	"errors"
 	"fmt"
-	"log"
-	"os"
 	"reflect"
 	"strings"
 )
 
 type Commander interface {
-	Run() error
+	Run([]string) error
 }
 
 type spec struct {
-	field        reflect.StructField
-	help         string
-	required     bool
-	positional   bool
-	defaultValue string
+	field reflect.StructField
+	name  string
+	help  string
 }
 
 type Command struct {
@@ -43,17 +40,48 @@ func (c *Command) addHelpCmd() {
 	c.addCommand(help)
 }
 
-func NewRoot(c Commander) *Command {
-	name := reflect.TypeOf(c).Elem().Name()
+func parseCommand(c Commander) (*Command, error) {
+	t := reflect.TypeOf(c)
+
+	if t.Kind() != reflect.Ptr {
+		return nil, errors.New("Commander must be pointers to struct")
+	}
+
+	t = t.Elem()
+	if t.Kind() != reflect.Struct {
+		return nil, errors.New("Commander must be pointers to struct")
+	}
+
+	n := t.NumField()
+
+	name := t.Name()
 	name = strings.ToLower(name)
 	cmd := &Command{
 		name:      name,
 		commander: c,
 	}
-	return cmd
+
+	for i := 0; i < n; i++ {
+		field := t.Field(i)
+		if !field.IsExported() {
+			continue // Export されていないフィールドに対して何もしない
+		}
+		help, _ := field.Tag.Lookup("help")
+		s := &spec{
+			field: field,
+			name:  field.Name,
+			help:  help,
+		}
+		cmd.specs = append(cmd.specs, s)
+	}
+
+	return cmd, nil
 }
 
-// FindCommand do not use
+func NewCommand(c Commander) (*Command, error) {
+	return parseCommand(c)
+}
+
 func (c *Command) FindCommand(args []string) (*Command, []string) {
 	var innerfind func(*Command, []string) (*Command, []string)
 
@@ -103,19 +131,13 @@ func (c *Command) addCommand(cmds ...*Command) {
 }
 
 func (c *Command) AddCommand(cmder Commander) *Command {
-	name := reflect.TypeOf(cmder).Elem().Name()
-	name = strings.ToLower(name)
-	cmd := &Command{
-		name:      name,
-		commander: cmder,
-		parent:    c,
-	}
+	cmd, _ := parseCommand(cmder)
 	c.addCommand(cmd)
 	return cmd
 }
 
 func (c *Command) execute(args []string) error {
-	err := c.commander.Run()
+	err := c.commander.Run(args)
 	return err
 }
 
@@ -127,57 +149,13 @@ func (c *Command) Execute(args []string) error {
 
 	var flags []string
 	cmd, flags := c.FindCommand(args)
+	for i := 0; i < len(cmd.specs); i++ {
+		fmt.Println(cmd.specs[i].name)
+		fmt.Println(cmd.specs[i].help)
+	}
 	err := cmd.execute(flags)
 	if err != nil {
 		return err
 	}
 	return nil
-}
-
-// 以下は main 処理
-
-// Tkm is a tkm private command
-type Tkm struct {
-}
-
-func (c Tkm) Run() error {
-	fmt.Println("tkm private command!")
-	return nil
-}
-
-// Hello return hello your name
-type Hello struct {
-	// 君の名は。
-	Name string `help:"君の名は。"`
-}
-
-func (c Hello) Run() error {
-	fmt.Printf("Hello %s\n", c.Name)
-	return nil
-}
-
-// Hoge print Fuga
-type Hoge struct {
-	Fuga string `default:"fuga"`
-}
-
-func (c Hoge) Run() error {
-	fmt.Println("hoge", c.Fuga)
-	return nil
-}
-
-func main() {
-	tkm := &Tkm{}
-	root := NewRoot(tkm)
-
-	hello := &Hello{}
-	hoge := &Hoge{}
-
-	helloCmd := root.AddCommand(hello)
-	helloCmd.AddCommand(hoge)
-
-	err := root.Execute(os.Args)
-	if err != nil {
-		log.Fatal(err)
-	}
 }
