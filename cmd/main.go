@@ -30,7 +30,7 @@ func (c Hello) Run(args []string) error {
 
 // Hoge print Fuga
 type Hoge struct {
-	Fuga string `default:"fuga"`
+	Fuga string `help:"fugafuga" default:"fuga"`
 }
 
 func (c Hoge) Run(args []string) error {

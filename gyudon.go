@@ -153,6 +153,16 @@ func (c *Command) Execute(args []string) error {
 		fmt.Println(cmd.specs[i].name)
 		fmt.Println(cmd.specs[i].help)
 	}
+
+	for i := 0; i < len(flags); i++ {
+		for j := 0; j < len(cmd.specs); j++ {
+			flag := strings.TrimLeft(flags[i], "-")
+			if flag == strings.ToLower(cmd.specs[j].name) {
+				fmt.Println("true")
+			}
+		}
+	}
+
 	err := cmd.execute(flags)
 	if err != nil {
 		return err
